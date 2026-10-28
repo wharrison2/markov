@@ -86,8 +86,7 @@ export class Chain {
     this.maxOrder = data.maxOrder;
     this.quoteStreak = data.quoteStreak;
     this.quoteHashes = new Set(data.quoteHashes);
-    this.sentenceLength = data.sentenceLength;
-    this.periodBoost = data.periodBoost;
+    this.periodRamp = data.periodRamp;
     // Drop closing quotes/brackets so "food.”" still counts as ending in a period.
     this.stripClosers = (word) => {
       let end = word.length;
@@ -103,6 +102,16 @@ export class Chain {
     }
   }
 
+  periodBoost(sentenceWords) {
+    // Same ramp as period_boost() in generate.py.
+    let boost = 1;
+    this.periodRamp.forEach(([start, step], i) => {
+      const end = i + 1 < this.periodRamp.length ? this.periodRamp[i + 1][0] : sentenceWords;
+      boost += step * Math.max(0, Math.min(sentenceWords, end) - start);
+    });
+    return boost;
+  }
+
   generate(prompt, length, maxOrder, rng) {
     const { model, vocab } = this;
     maxOrder = Math.min(maxOrder, this.maxOrder);
@@ -112,12 +121,12 @@ export class Chain {
     if (history.length && !model.has(history.at(-1).toLowerCase())) return null;
     const output = [];
     const endsSentence = (w) => /[.!?]$/.test(this.stripClosers(w));
-    // Once a sentence has run long enough, words ending in a period get extra weight.
-    const boosted = (word, w) => (/\.$/.test(this.stripClosers(word)) ? w * this.periodBoost : w);
     // Words in the current sentence so far, counting any unfinished sentence at the end of the prompt.
     let sentenceWords = history.length - 1 - history.findLastIndex(endsSentence);
     for (let i = 0; i < length; i++) {
-      const weightOf = sentenceWords >= this.sentenceLength ? boosted : undefined;
+      // As the sentence runs long, words ending in a period get a growing weight multiplier.
+      const boost = this.periodBoost(sentenceWords);
+      const weightOf = (word, w) => (/\.$/.test(this.stripClosers(word)) ? w * boost : w);
       const tail = history.slice(-this.quoteStreak).map((w) => w.toLowerCase()).join(" ");
       const quoting = history.length >= this.quoteStreak && this.quoteHashes.has(fnv1a(tail));
       let word = nextWord(model, history, quoting ? Math.max(1, maxOrder - 1) : maxOrder, rng, weightOf);
