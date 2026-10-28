@@ -1,1 +1,6 @@
 __pycache__/
+
+# The corpus is private: only the frozen model.json is published.
+corpus/
+corpus.json
+*.txt
