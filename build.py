@@ -10,7 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from generate import CORPUS_DIR, QUOTE_STREAK, build_model, build_quote_index, load_corpus  # noqa: E402
+from generate import (CLOSERS, CORPUS_DIR, PERIOD_BOOST, QUOTE_STREAK, SENTENCE_LENGTH,  # noqa: E402
+                      build_model, build_quote_index, load_corpus)
 
 OUT = Path(__file__).parent / "model.json"
 MAX_ORDER = 2  # highest lookback the page offers
@@ -33,6 +34,9 @@ def main():
     data = {
         "maxOrder": MAX_ORDER,
         "quoteStreak": QUOTE_STREAK,
+        "sentenceLength": SENTENCE_LENGTH,
+        "periodBoost": PERIOD_BOOST,
+        "closers": CLOSERS,
         "words": words,
         # Context (lowercased words joined by spaces) -> flat [word index, weight, word index, weight, ...].
         "contexts": {" ".join(context): [x for word, weight in followers.items() for x in (index[word], weight)]

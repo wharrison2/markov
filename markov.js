@@ -7,12 +7,12 @@ function fnv1a(text) {
   return h;
 }
 
-function sample(followers, rng) {
+function sample(followers, rng, weightOf = (word, w) => w) {
   let total = 0;
-  for (const w of followers.values()) total += w;
+  for (const [word, w] of followers) total += weightOf(word, w);
   let r = rng() * total;
   for (const [word, w] of followers) {
-    if ((r -= w) < 0) return word;
+    if ((r -= weightOf(word, w)) < 0) return word;
   }
   return followers.keys().next().value;
 }
@@ -54,12 +54,12 @@ function correct(word, model, vocab) {
   return best ?? word;
 }
 
-function nextWord(model, history, maxOrder, rng) {
+function nextWord(model, history, maxOrder, rng, weightOf) {
   // Pick the next word using the longest context we've seen, backing off to shorter ones.
   for (let n = Math.min(maxOrder, history.length); n > 0; n--) {
     const key = history.slice(-n).map((w) => w.toLowerCase()).join(" ");
     const followers = model.get(key);
-    if (followers) return sample(followers, rng);
+    if (followers) return sample(followers, rng, weightOf);
   }
   return null;
 }
@@ -86,6 +86,14 @@ export class Chain {
     this.maxOrder = data.maxOrder;
     this.quoteStreak = data.quoteStreak;
     this.quoteHashes = new Set(data.quoteHashes);
+    this.sentenceLength = data.sentenceLength;
+    this.periodBoost = data.periodBoost;
+    // Drop closing quotes/brackets so "food.”" still counts as ending in a period.
+    this.stripClosers = (word) => {
+      let end = word.length;
+      while (end && data.closers.includes(word[end - 1])) end--;
+      return word.slice(0, end);
+    };
     // How often each word appears, for jumping somewhere random at a dead end.
     this.wordWeights = new Map();
     for (const context of this.vocab) {
@@ -103,16 +111,23 @@ export class Chain {
     // The last word is one we've never seen, with no close spelling either: give up rather than guess.
     if (history.length && !model.has(history.at(-1).toLowerCase())) return null;
     const output = [];
+    const endsSentence = (w) => /[.!?]$/.test(this.stripClosers(w));
+    // Once a sentence has run long enough, words ending in a period get extra weight.
+    const boosted = (word, w) => (/\.$/.test(this.stripClosers(word)) ? w * this.periodBoost : w);
+    // Words in the current sentence so far, counting any unfinished sentence at the end of the prompt.
+    let sentenceWords = history.length - 1 - history.findLastIndex(endsSentence);
     for (let i = 0; i < length; i++) {
+      const weightOf = sentenceWords >= this.sentenceLength ? boosted : undefined;
       const tail = history.slice(-this.quoteStreak).map((w) => w.toLowerCase()).join(" ");
       const quoting = history.length >= this.quoteStreak && this.quoteHashes.has(fnv1a(tail));
-      let word = nextWord(model, history, quoting ? Math.max(1, maxOrder - 1) : maxOrder, rng);
+      let word = nextWord(model, history, quoting ? Math.max(1, maxOrder - 1) : maxOrder, rng, weightOf);
       if (word === null) {
         // Dead end (or prompt words never seen): jump to a random word from the corpus.
-        word = sample(this.wordWeights, rng);
+        word = sample(this.wordWeights, rng, weightOf);
       }
       output.push(word);
       history.push(word);
+      sentenceWords = endsSentence(word) ? 0 : sentenceWords + 1;
     }
     return output.join(" ");
   }
