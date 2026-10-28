@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markov Me</title>
+  <style>
+    :root {
+      --bg: #fbfaf7; --fg: #1d1c1a; --muted: #6b6862; --line: #dedad2;
+      --field: #ffffff; --accent: #2f5d50; --accent-fg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161615; --fg: #ebe8e1; --muted: #9a968d; --line: #33322f;
+        --field: #1f1f1d; --accent: #7fb8a6; --accent-fg: #111110;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 17px/1.6 Georgia, "Iowan Old Style", serif;
+    }
+    main { max-width: 680px; margin: 0 auto; padding: 48px 16px 80px; }
+    h1 { font-size: 1.9rem; margin: 0 0 4px; font-weight: normal; }
+    .sub { color: var(--muted); margin: 0 0 32px; font-size: 0.95rem; }
+    label { display: block; font: 600 0.8rem/1.4 system-ui, sans-serif; color: var(--muted);
+            text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+    textarea, input, select {
+      width: 100%; font: inherit; color: var(--fg); background: var(--field);
+      border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+    }
+    textarea { resize: vertical; min-height: 72px; }
+    .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 20px; }
+    button {
+      font: 600 0.95rem system-ui, sans-serif; background: var(--accent); color: var(--accent-fg);
+      border: 0; border-radius: 6px; padding: 11px 22px; cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    #output { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); min-height: 4em;
+              white-space: pre-wrap; overflow-wrap: anywhere; }
+    #output .prompt { font-weight: bold; }
+    #status { color: var(--muted); font: 0.85rem system-ui, sans-serif; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Markov Me</h1>
+    <p class="sub">Give it a few words and it continues them in the style of my writing, one word at a time.</p>
+
+    <form id="form">
+      <label for="prompt">Starting text</label>
+      <textarea id="prompt" placeholder="The problem with insects is">The problem with</textarea>
+      <div class="row">
+        <div>
+          <label for="length">Words</label>
+          <input id="length" type="number" min="1" max="500" value="50">
+        </div>
+        <div>
+          <label for="order">Lookback</label>
+          <select id="order">
+            <option value="1">1 word</option>
+            <option value="2" selected>2 words</option>
+          </select>
+        </div>
+        <div>
+          <label for="seed">Seed</label>
+          <input id="seed" type="number" placeholder="random">
+        </div>
+      </div>
+      <button id="go" type="submit" disabled>Loading…</button>
+    </form>
+
+    <div id="output" aria-live="polite"></div>
+    <div id="status"></div>
+  </main>
+
+  <script type="module">
+    import { Chain, mulberry32 } from "./markov.js";
+    import { isProfane } from "./filter.js";
+
+    const $ = (id) => document.getElementById(id);
+    let chain;
+
+    try {
+      const res = await fetch("model.json");
+      chain = new Chain(await res.json());
+      $("status").textContent = `Knows ${chain.vocab.length.toLocaleString()} words.`;
+      $("go").disabled = false;
+      $("go").textContent = "Generate";
+    } catch (err) {
+      $("status").textContent = "Couldn't load model.json. Run build.py and serve this folder over HTTP.";
+      console.error(err);
+    }
+
+    $("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const prompt = $("prompt").value.trim();
+      const length = Math.min(500, Math.max(1, parseInt($("length").value, 10) || 50));
+      const order = parseInt($("order").value, 10);
+      const seed = $("seed").value === "" ? null : parseInt($("seed").value, 10);
+      const rng = seed === null ? Math.random : mulberry32(seed);
+
+      const out = $("output");
+      out.replaceChildren();
+      if (isProfane(prompt)) {
+        out.textContent = "Let’s keep it clean. Try a different starting text.";
+        return;
+      }
+      const text = chain.generate(prompt, length, order, rng);
+      if (text === null) {
+        out.textContent = "I’m not sure where to go with this.";
+        return;
+      }
+      if (prompt) {
+        const p = document.createElement("span");
+        p.className = "prompt";
+        p.textContent = prompt + " ";
+        out.append(p);
+      }
+      out.append(text);
+    });
+  </script>
+</body>
+</html>
