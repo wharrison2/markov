@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from generate import (CLOSERS, CORPUS_DIR, PERIOD_RAMP, QUOTE_STREAK,  # noqa: E402
+from generate import (CLOSERS, CORPUS_DIR, PERIOD_RAMP, QUOTE_STREAK, TYPO_CUTOFF,  # noqa: E402
                       build_model, build_quote_index, load_corpus)
 
 OUT = Path(__file__).parent / "model.json"
@@ -35,6 +35,7 @@ def main():
         "maxOrder": MAX_ORDER,
         "quoteStreak": QUOTE_STREAK,
         "periodRamp": PERIOD_RAMP,
+        "typoCutoff": TYPO_CUTOFF,
         "closers": CLOSERS,
         "words": words,
         # Context (lowercased words joined by spaces) -> flat [word index, weight, word index, weight, ...].

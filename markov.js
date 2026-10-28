@@ -37,11 +37,11 @@ function matchingChars(a, b) {
     matchingChars(a.slice(bi + best), b.slice(bj + best));
 }
 
-function correct(word, model, vocab) {
+function correct(word, model, vocab, cutoff) {
   // Return the most similarly spelled word we've seen (e.g. fixing a typo), or the word itself.
   const lower = word.toLowerCase();
   if (model.has(lower)) return word;
-  let best = null, bestScore = 0.7;
+  let best = null, bestScore = cutoff;
   for (const candidate of vocab) {
     const total = lower.length + candidate.length;
     // Cheap upper bound before the full comparison, like difflib's real_quick_ratio.
@@ -87,6 +87,7 @@ export class Chain {
     this.quoteStreak = data.quoteStreak;
     this.quoteHashes = new Set(data.quoteHashes);
     this.periodRamp = data.periodRamp;
+    this.typoCutoff = data.typoCutoff;
     // Drop closing quotes/brackets so "food.”" still counts as ending in a period.
     this.stripClosers = (word) => {
       let end = word.length;
@@ -116,7 +117,7 @@ export class Chain {
     const { model, vocab } = this;
     maxOrder = Math.min(maxOrder, this.maxOrder);
     // Generate as if the prompt's unseen words were spelled like their closest matches in the corpus.
-    const history = prompt.split(/\s+/).filter(Boolean).map((w) => correct(w, model, vocab));
+    const history = prompt.split(/\s+/).filter(Boolean).map((w) => correct(w, model, vocab, this.typoCutoff));
     // The last word is one we've never seen, with no close spelling either: give up rather than guess.
     if (history.length && !model.has(history.at(-1).toLowerCase())) return null;
     const output = [];
